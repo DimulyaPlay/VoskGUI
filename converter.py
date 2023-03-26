@@ -7,7 +7,6 @@ import json
 import threading
 import subprocess
 import pyaudio
-import queue
 #  pyinstaller --noconfirm --onefile --windowed --icon "C:/Users/dimas/VoskGUI/icon.png" --add-data "C:\Python38\Lib\site-packages\vosk;vosk" --add-data "C:/Users/dimas/VoskGUI/ffmpeg.exe;." --add-data "C:/Users/dimas/VoskGUI/ffprobe.exe;." --add-data "C:/Users/dimas/VoskGUI/icon.png;." --add-data "C:/Users/dimas/VoskGUI/vosk-model-small-ru-0.22;vosk-model-small-ru-0.22/"  "C:/Users/dimas/VoskGUI/converter.py"
 
 
@@ -71,7 +70,6 @@ class WorkerLive(threading.Thread):
         self.text_edit = text_edit
         self.stop_event = threading.Event()
         self.rec = KaldiRecognizer(self.model, 16000)
-        self.q = queue.Queue()
         self.p = pyaudio.PyAudio()
         self.stream = self.p.open(format=pyaudio.paInt16, channels=1, rate=16000, input=True, frames_per_buffer=2000)
 
