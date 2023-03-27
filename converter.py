@@ -38,7 +38,6 @@ class WorkerFile(threading.Thread):
     def run(self):
         self.b1.setDisabled(True)
         self.b2.setDisabled(True)
-        # if self.filename.lower().endswith(".mp3"):
         new_filename = os.path.splitext(self.filename)[0] + "_new.wav"
         subprocess.call(['ffmpeg', '-y', '-i', self.filename, new_filename], creationflags=subprocess.CREATE_NO_WINDOW)
         self.filename = new_filename
@@ -80,7 +79,6 @@ class WorkerLive(threading.Thread):
         self.stop_event = threading.Event()
         self.mic = mic_chosen
         if self.mic is None:
-            print('default mic')
             try:
                 self.stream = pyaudio.PyAudio().open(format=pyaudio.paInt16, channels=1, rate=16000, input=True,
                                                      frames_per_buffer=2000)
@@ -89,7 +87,6 @@ class WorkerLive(threading.Thread):
                 self.stream = None
             self.rec = KaldiRecognizer(self.model, 16000)
         else:
-            print('choosen mic')
             try:
                 self.stream = pyaudio.PyAudio().open(
                     format=pyaudio.paInt16,
@@ -164,9 +161,7 @@ class MainWindow(QMainWindow):
     def process_live(self):
         threads = {}
         if self.mic_chosen:
-            print('generate window')
             mow = TextMultiOutputWindow(self, self.mic_chosen)
-            print('window opened')
             for micidx, micname in self.mic_chosen.items():
                 print(micidx,micname)
                 threads[micidx] = WorkerLive(self.model, mow.text_fields[micidx], self.process_button, self.rec_button, micidx)
