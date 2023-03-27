@@ -1,12 +1,26 @@
 from PyQt5.QtWidgets import QApplication, QWidget, QLabel, QCheckBox, QPushButton, QVBoxLayout, QDialog
 from PyQt5.QtCore import Qt
+from PyQt5.QtGui import QIcon
 import pyaudio
+import os, sys
+
+
+def resource_path(relative_path):
+    """ Get absolute path to resource, works for dev and for PyInstaller """
+    try:
+        # PyInstaller creates a temp folder and stores path in _MEIPASS
+        base_path = sys._MEIPASS
+    except Exception:
+        base_path = os.path.abspath(".")
+
+    return os.path.join(base_path, relative_path)
 
 
 class MicrophoneSelectionWindow(QDialog):
     def __init__(self, parent):
         super().__init__(parent=parent)
         self.parent = parent
+        self.setWindowIcon(QIcon(resource_path('icon.png')))
         # Получение списка микрофонов с их индексами
         self.mic_dict = {}
         self.p = pyaudio.PyAudio()
@@ -44,11 +58,9 @@ class MicrophoneSelectionWindow(QDialog):
 
     def apply_settings(self):
         # Сбор выбранных микрофонов и их индексов
-        selected_mics = []
         for checkbox in self.mic_checkboxes:
             if checkbox.isChecked():
-                selected_mics.append(checkbox.index)
-        self.parent.mic_chosen = selected_mics
+                self.parent.mic_chosen[checkbox.index] = self.mic_dict[checkbox.index]
         # Закрытие окна и возврат списка индексов микрофонов
         self.close()
 

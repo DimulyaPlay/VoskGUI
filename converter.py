@@ -10,6 +10,7 @@ import subprocess
 import pyaudio
 from micselection import *
 #  pyinstaller --noconfirm --onefile --windowed --icon "C:/Users/dimas/VoskGUI/icon.png" --add-data "C:\Python38\Lib\site-packages\vosk;vosk" --add-data "C:/Users/dimas/VoskGUI/ffmpeg.exe;." --add-data "C:/Users/dimas/VoskGUI/ffprobe.exe;." --add-data "C:/Users/dimas/VoskGUI/icon.png;." --add-data "C:/Users/dimas/VoskGUI/vosk-model-small-ru-0.22;vosk-model-small-ru-0.22/"  "C:/Users/dimas/VoskGUI/converter.py"
+#  pyinstaller --noconfirm --onefile --windowed --icon "C:/Users/CourtUser/Desktop/release/VoskGUI/icon.png" --add-data "C:/Users/CourtUser/Desktop/release/VoskGUI/blue-document-music.png;." --add-data "C:/Users/CourtUser/Desktop/release/VoskGUI/cross.png;." --add-data "C:/Users/CourtUser/Desktop/release/VoskGUI/eraser.png;." --add-data "C:/Users/CourtUser/Desktop/release/VoskGUI/ffmpeg.exe;." --add-data "C:/Users/CourtUser/Desktop/release/VoskGUI/ffprobe.exe;." --add-data "C:/Users/CourtUser/Desktop/release/VoskGUI/icon.png;." --add-data "C:/Users/CourtUser/Desktop/release/VoskGUI/main_window.ui;." --add-data "C:/Users/CourtUser/Desktop/release/VoskGUI/microphone.png;." --add-data "C:/Users/CourtUser/Desktop/release/VoskGUI/microphone--pencil.png;." --add-data "C:/Users/CourtUser/Desktop/release/VoskGUI/vosk-model-small-ru-0.22;vosk-model-small-ru-0.22/" --add-data "C:/Python38/Lib/site-packages/vosk;vosk/"  "C:/Users/CourtUser/Desktop/release/VoskGUI/converter.py"
 
 
 def resource_path(relative_path):
@@ -77,8 +78,8 @@ class WorkerLive(threading.Thread):
         self.model = model
         self.text_edit = text_edit
         self.stop_event = threading.Event()
-        self.mic_list = mic_chosen
-        if not self.mic_list:
+        self.mic = mic_chosen
+        if self.mic is None:
             print('default mic')
             try:
                 self.stream = pyaudio.PyAudio().open(format=pyaudio.paInt16, channels=1, rate=16000, input=True,
@@ -90,17 +91,17 @@ class WorkerLive(threading.Thread):
         else:
             print('choosen mic')
             try:
-                self.stream = [pyaudio.PyAudio().open(
+                self.stream = pyaudio.PyAudio().open(
                     format=pyaudio.paInt16,
                     channels=1,
                     rate=16000,
                     input=True,
-                    input_device_index=index,
-                    frames_per_buffer=2000) for index in self.mic_list]
+                    input_device_index=self.mic,
+                    frames_per_buffer=2000)
             except Exception as e:
                 self.text_edit.append('Не удается организовать чтение с выбранных устройств, проверьте подключение')
                 self.stream = None
-            self.rec = [KaldiRecognizer(self.model, 16000) for _ in range(len(self.mic_list))]
+            self.rec = KaldiRecognizer(self.model, 16000)
         self.b1 = b1
         self.b2 = b2
 
@@ -109,24 +110,18 @@ class WorkerLive(threading.Thread):
             return
         self.b1.setDisabled(True)
         self.b2.setDisabled(True)
-        self.text_edit.append('Распознавание с микрофона началось\n\n')
+        self.text_edit.append('Распознавание с микрофона началось\n')
         while True:
             if self.stop_event.is_set():
-                self.text_edit.append('\n\nРаспознавание было остановлено пользователем.')
+                self.text_edit.append('\nРаспознавание было остановлено пользователем.')
                 return
-            if not self.mic_list:
-                data = self.stream.read(2000)
-                if self.rec.AcceptWaveform(data):
-                    result = json.loads(self.rec.Result())
-                    text = result['text']
+
+            data = self.stream.read(2000)
+            if self.rec.AcceptWaveform(data):
+                result = json.loads(self.rec.Result())
+                text = result['text']
+                if text != '':
                     self.text_edit.append(text)
-            else:
-                data = [device.read(2000) for device in self.stream]
-                for recognizer, audio_data in zip(self.rec, data):
-                    if recognizer.AcceptWaveform(audio_data):
-                        result = json.loads(recognizer.Result())
-                        text = result['text']
-                        self.text_edit.append(text)
 
     def stop(self):
         self.stop_event.set()
@@ -153,11 +148,10 @@ class MainWindow(QMainWindow):
         clear_button = self.findChild(QPushButton, 'pushButton_clear')
         clear_button.clicked.connect(lambda: self.text_edit.clear())
         self.model = Model(resource_path("vosk-model-small-ru-0.22"))
-        self.mic_chosen = []
+        self.mic_chosen = {}
         self.show()
 
     def process_file(self):
-        print(self.mic_chosen)
         file_dialog = QFileDialog(self)
         filename, _ = file_dialog.getOpenFileName(None, "Выберите аудиофайл", "", "Audio Files (*.wav *.mp3)")
         if not filename:
@@ -168,9 +162,20 @@ class MainWindow(QMainWindow):
         worker_thread.start()
 
     def process_live(self):
-        worker_thread = WorkerLive(self.model, self.text_edit, self.process_button, self.rec_button, self.mic_chosen)
-        self.stop_button.clicked.connect(worker_thread.stop)
-        worker_thread.start()
+        threads = {}
+        if self.mic_chosen:
+            print('generate window')
+            mow = TextMultiOutputWindow(self, self.mic_chosen)
+            print('window opened')
+            for micidx, micname in self.mic_chosen.items():
+                print(micidx,micname)
+                threads[micidx] = WorkerLive(self.model, mow.text_fields[micidx], self.process_button, self.rec_button, micidx)
+                self.stop_button.clicked.connect(threads[micidx].stop)
+                threads[micidx].start()
+        else:
+            th = WorkerLive(self.model, self.text_edit, self.process_button, self.rec_button, None)
+            self.stop_button.clicked.connect(th.stop)
+            th.start()
 
     def choose_mics_window(self):
         mw = MicrophoneSelectionWindow(self)
@@ -178,6 +183,30 @@ class MainWindow(QMainWindow):
     def closeEvent(self, event):
         QApplication.quit()
         event.accept()
+
+
+class TextMultiOutputWindow(QDialog):
+    def __init__(self,parent, field_names):
+        super().__init__(parent=parent)
+        self.setWindowTitle('Помикрофонный вывод')
+        # создаем словарь для хранения текстовых полей
+        self.text_fields = {}
+        self.setWindowIcon(QIcon(resource_path('icon.png')))
+        # создаем макет вертикального размещения
+        layout = QVBoxLayout()
+
+        # для каждого переданного имени поля создаем текстовое поле и добавляем его на макет
+        for idx, name in field_names.items():
+            label = QLabel(name + ":")
+            text_field = QTextEdit()
+            text_field.setReadOnly(True)
+            self.text_fields[idx] = text_field
+            layout.addWidget(label)
+            layout.addWidget(text_field)
+
+        # устанавливаем макет для окна
+        self.setLayout(layout)
+        self.show()
 
 
 app = QApplication([])
