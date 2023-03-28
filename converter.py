@@ -8,6 +8,7 @@ import json
 import threading
 import subprocess
 import pyaudio
+import numpy as np
 from micselection import *
 #  pyinstaller --noconfirm --onefile --windowed --icon "C:/Users/dimas/VoskGUI/icon.png" --add-data "C:\Python38\Lib\site-packages\vosk;vosk" --add-data "C:/Users/dimas/VoskGUI/ffmpeg.exe;." --add-data "C:/Users/dimas/VoskGUI/ffprobe.exe;." --add-data "C:/Users/dimas/VoskGUI/icon.png;." --add-data "C:/Users/dimas/VoskGUI/vosk-model-small-ru-0.22;vosk-model-small-ru-0.22/"  "C:/Users/dimas/VoskGUI/converter.py"
 #  pyinstaller --noconfirm --onefile --windowed --icon "C:/Users/CourtUser/Desktop/release/VoskGUI/icon.png" --add-data "C:/Users/CourtUser/Desktop/release/VoskGUI/blue-document-music.png;." --add-data "C:/Users/CourtUser/Desktop/release/VoskGUI/cross.png;." --add-data "C:/Users/CourtUser/Desktop/release/VoskGUI/eraser.png;." --add-data "C:/Users/CourtUser/Desktop/release/VoskGUI/ffmpeg.exe;." --add-data "C:/Users/CourtUser/Desktop/release/VoskGUI/ffprobe.exe;." --add-data "C:/Users/CourtUser/Desktop/release/VoskGUI/icon.png;." --add-data "C:/Users/CourtUser/Desktop/release/VoskGUI/main_window.ui;." --add-data "C:/Users/CourtUser/Desktop/release/VoskGUI/microphone.png;." --add-data "C:/Users/CourtUser/Desktop/release/VoskGUI/microphone--pencil.png;." --add-data "C:/Users/CourtUser/Desktop/release/VoskGUI/vosk-model-small-ru-0.22;vosk-model-small-ru-0.22/" --add-data "C:/Python38/Lib/site-packages/vosk;vosk/"  "C:/Users/CourtUser/Desktop/release/VoskGUI/converter.py"
@@ -115,16 +116,18 @@ class WorkerLive(threading.Thread):
                 return
             data = self.stream.read(2000)
             if self.split_channels:
+                audio_data_np = np.frombuffer(data, dtype=np.float32)
+                audio_data_np = np.reshape(audio_data_np, (-1, 2))
                 # получаем данные из левого канала
-                data_left = data[0::2]
-                if self.rec.AcceptWaveform(data_left):
+                left_channel = audio_data_np[:, 0]
+                right_channel = audio_data_np[:, 1]
+                if self.rec.AcceptWaveform(left_channel.tobytes()):
                     result = json.loads(self.rec.Result())
                     text = result['text']
                     if text != '':
                         self.text_edit[0].append(text)
                 # получаем данные из правого канала
-                data_right = data[1::2]
-                if self.rec.AcceptWaveform(data_right):
+                if self.rec.AcceptWaveform(right_channel.tobytes()):
                     result = json.loads(self.rec.Result())
                     text = result['text']
                     if text != '':
