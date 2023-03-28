@@ -58,6 +58,10 @@ class WorkerFile(threading.Thread):
                 result = json.loads(rec.Result())
                 text = result['text']
                 self.text_edit.append(text)
+        try:
+            os.unlink(self.filename)
+        except Exception:
+            pass
         result = json.loads(rec.FinalResult())
         text = result['text']
         self.text_edit.append(text)
@@ -66,6 +70,10 @@ class WorkerFile(threading.Thread):
         self.b2.setDisabled(False)
 
     def stop(self):
+        try:
+            os.unlink(self.filename)
+        except Exception:
+            pass
         self.stop_event.set()
         self.b1.setDisabled(False)
         self.b2.setDisabled(False)
@@ -141,6 +149,8 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("Распознавание речи. Vosk RUS recognition GUI by Dmitry Sosnin")
         self.setWindowIcon(QIcon(resource_path('icon.png')))
         self.text_edit = self.findChild(QTextEdit, 'textEdit')
+        self.text_edit.textChanged.connect(
+            lambda fname=os.getcwd() + '\\' + 'default_mic.txt': write_to_txt(fname, self.text_edit))
         self.combo_box = self.findChild(QComboBox, 'comboBox')
         self.combo_box.addItems(['4000', '8000', '16000', 'Исходный Samplerate'])
         self.process_button = self.findChild(QPushButton, 'pushButton_fromFile')
@@ -164,9 +174,9 @@ class MainWindow(QMainWindow):
         if not filename:
             return
         sr = self.combo_box.currentText()
-        worker_thread = WorkerFile(filename, self.model, self.text_edit, sr, self.process_button, self.rec_button)
-        self.stop_button.clicked.connect(worker_thread.stop)
-        worker_thread.start()
+        self.worker_thread = WorkerFile(filename, self.model, self.text_edit, sr, self.process_button, self.rec_button)
+        self.stop_button.clicked.connect(self.worker_thread.stop)
+        self.worker_thread.start()
 
     def process_live(self):
         if self.mic_chosen:
@@ -185,10 +195,19 @@ class MainWindow(QMainWindow):
         MicrophoneSelectionWindow(self)
 
     def closeEvent(self, event):
+        try:
+            os.unlink(self.worker_thread.filename)
+        except Exception:
+            pass
         for th in list(self.threads.values()):
             th.stop()
         QApplication.quit()
         event.accept()
+
+
+def write_to_txt(fname, text_edit):
+    with open(fname, 'w') as fle:
+        fle.write(text_edit.toPlainText())
 
 
 class TextMultiOutputWindow(QDialog):
@@ -201,13 +220,14 @@ class TextMultiOutputWindow(QDialog):
         # создаем макет вертикального размещения
         layout = QVBoxLayout()
         channels = ['_L', '_R']
-
         # для каждого переданного имени поля создаем текстовое поле и добавляем его на макет
         for idx, name in field_names.items():
             if split_channels:
                 for ch in channels:
                     label = QLabel(name + ch + ":")
                     text_field = QTextEdit()
+                    text_field.textChanged.connect(
+                        lambda fname=os.getcwd() + '\\' + str(idx) + ch + '.txt': write_to_txt(fname, text_field))
                     text_field.setReadOnly(True)
                     self.text_fields[str(idx)+ch] = text_field
                     layout.addWidget(label)
@@ -215,6 +235,8 @@ class TextMultiOutputWindow(QDialog):
             else:
                 label = QLabel(name + ":")
                 text_field = QTextEdit()
+                text_field.textChanged.connect(
+                    lambda fname=os.getcwd() + '\\' + str(idx) + '.txt': write_to_txt(fname, text_field))
                 text_field.setReadOnly(True)
                 self.text_fields[idx] = text_field
                 layout.addWidget(label)
