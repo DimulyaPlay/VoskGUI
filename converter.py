@@ -1,5 +1,3 @@
-import sys
-
 from PyQt5.QtWidgets import QApplication, QPushButton, QTextEdit, QFileDialog, QMainWindow, QComboBox
 from PyQt5 import uic
 from PyQt5.QtGui import QIcon
@@ -90,7 +88,7 @@ class WorkerLive(threading.Thread):
                 input=True,
                 input_device_index=self.mic,
                 frames_per_buffer=2000)
-        except Exception as e:
+        except Exception:
             [i.append('Не удается организовать чтение с выбранных устройств, проверьте подключение') for i in self.text_edit]
             self.stream = None
         self.rec = KaldiRecognizer(self.model, 16000)
@@ -110,7 +108,7 @@ class WorkerLive(threading.Thread):
             data = self.stream.read(2000)
             if self.split_channels:
                 # получаем данные из левого канала
-                data_left = data[::2]
+                data_left = data[0::2]
                 if self.rec.AcceptWaveform(data_left):
                     result = json.loads(self.rec.Result())
                     text = result['text']
@@ -156,6 +154,7 @@ class MainWindow(QMainWindow):
         clear_button.clicked.connect(lambda: self.text_edit.clear())
         self.model = Model(resource_path("vosk-model-small-ru-0.22"))
         self.mic_chosen = {}
+        self.threads = {}
         self.split_channels = False
         self.show()
 
@@ -170,7 +169,6 @@ class MainWindow(QMainWindow):
         worker_thread.start()
 
     def process_live(self):
-        self.threads = {}
         if self.mic_chosen:
             mow = TextMultiOutputWindow(self, self.mic_chosen, self.split_channels)
             for micidx, micname in self.mic_chosen.items():
@@ -184,7 +182,7 @@ class MainWindow(QMainWindow):
             self.threads[0].start()
 
     def choose_mics_window(self):
-        mw = MicrophoneSelectionWindow(self)
+        MicrophoneSelectionWindow(self)
 
     def closeEvent(self, event):
         for th in list(self.threads.values()):
@@ -194,7 +192,7 @@ class MainWindow(QMainWindow):
 
 
 class TextMultiOutputWindow(QDialog):
-    def __init__(self,parent, field_names, split_channels):
+    def __init__(self, parent, field_names, split_channels):
         super().__init__(parent=parent)
         self.setWindowTitle('Помикрофонный вывод')
         # создаем словарь для хранения текстовых полей
@@ -202,7 +200,7 @@ class TextMultiOutputWindow(QDialog):
         self.setWindowIcon(QIcon(resource_path('icon.png')))
         # создаем макет вертикального размещения
         layout = QVBoxLayout()
-        channels = ['_L','_R']
+        channels = ['_L', '_R']
 
         # для каждого переданного имени поля создаем текстовое поле и добавляем его на макет
         for idx, name in field_names.items():
