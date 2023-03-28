@@ -46,6 +46,7 @@ class MicrophoneSelectionWindow(QDialog):
             checkbox.setChecked(index in self.parent.mic_chosen)
             self.mic_checkboxes.append(checkbox)
         # Кнопка применения настроек
+        self.split_channels = QCheckBox('Анализировать левый и правый каналы раздельно')
         self.apply_button = QPushButton("Применить")
         self.apply_button.clicked.connect(self.apply_settings)
         # Размещение виджетов на окне
@@ -53,6 +54,7 @@ class MicrophoneSelectionWindow(QDialog):
         vbox.addWidget(self.description)
         for checkbox in self.mic_checkboxes:
             vbox.addWidget(checkbox)
+        vbox.addWidget(self.split_channels)
         vbox.addWidget(self.apply_button)
         self.setLayout(vbox)
 
@@ -61,6 +63,7 @@ class MicrophoneSelectionWindow(QDialog):
         for checkbox in self.mic_checkboxes:
             if checkbox.isChecked():
                 self.parent.mic_chosen[checkbox.index] = self.mic_dict[checkbox.index]
+        self.parent.split_channels = self.split_channels.isChecked()
         # Закрытие окна и возврат списка индексов микрофонов
         self.close()
 

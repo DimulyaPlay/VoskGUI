@@ -1,3 +1,5 @@
+import sys
+
 from PyQt5.QtWidgets import QApplication, QPushButton, QTextEdit, QFileDialog, QMainWindow, QComboBox
 from PyQt5 import uic
 from PyQt5.QtGui import QIcon
@@ -72,33 +74,26 @@ class WorkerFile(threading.Thread):
 
 
 class WorkerLive(threading.Thread):
-    def __init__(self, model, text_edit, b1, b2, mic_chosen):
+    def __init__(self, model, text_edit, b1, b2, mic_chosen, split_channels):
         super(WorkerLive, self).__init__()
         self.model = model
         self.text_edit = text_edit
         self.stop_event = threading.Event()
         self.mic = mic_chosen
-        if self.mic is None:
-            try:
-                self.stream = pyaudio.PyAudio().open(format=pyaudio.paInt16, channels=1, rate=16000, input=True,
-                                                     frames_per_buffer=2000)
-            except Exception as e:
-                self.text_edit.append('Не обнаружен микрофон по умолчанию')
-                self.stream = None
-            self.rec = KaldiRecognizer(self.model, 16000)
-        else:
-            try:
-                self.stream = pyaudio.PyAudio().open(
-                    format=pyaudio.paInt16,
-                    channels=1,
-                    rate=16000,
-                    input=True,
-                    input_device_index=self.mic,
-                    frames_per_buffer=2000)
-            except Exception as e:
-                self.text_edit.append('Не удается организовать чтение с выбранных устройств, проверьте подключение')
-                self.stream = None
-            self.rec = KaldiRecognizer(self.model, 16000)
+        self.split_channels = split_channels
+        channels = 2 if split_channels else 1
+        try:
+            self.stream = pyaudio.PyAudio().open(
+                format=pyaudio.paInt16,
+                channels=channels,
+                rate=16000,
+                input=True,
+                input_device_index=self.mic,
+                frames_per_buffer=2000)
+        except Exception as e:
+            [i.append('Не удается организовать чтение с выбранных устройств, проверьте подключение') for i in self.text_edit]
+            self.stream = None
+        self.rec = KaldiRecognizer(self.model, 16000)
         self.b1 = b1
         self.b2 = b2
 
@@ -107,18 +102,33 @@ class WorkerLive(threading.Thread):
             return
         self.b1.setDisabled(True)
         self.b2.setDisabled(True)
-        self.text_edit.append('Распознавание с микрофона началось\n')
+        [i.append('Распознавание с микрофона началось\n') for i in self.text_edit]
         while True:
             if self.stop_event.is_set():
-                self.text_edit.append('\nРаспознавание было остановлено пользователем.')
+                [i.append('\nРаспознавание было остановлено пользователем.') for i in self.text_edit]
                 return
-
             data = self.stream.read(2000)
-            if self.rec.AcceptWaveform(data):
+            if self.split_channels:
+                # получаем данные из левого канала
+                data_left = data[::2]
+                if self.rec.AcceptWaveform(data_left):
+                    result = json.loads(self.rec.Result())
+                    text = result['text']
+                    if text != '':
+                        self.text_edit[0].append(text)
+                # получаем данные из правого канала
+                data_right = data[1::2]
+                if self.rec.AcceptWaveform(data_right):
+                    result = json.loads(self.rec.Result())
+                    text = result['text']
+                    if text != '':
+                        self.text_edit[1].append(text)
+
+            elif self.rec.AcceptWaveform(data):
                 result = json.loads(self.rec.Result())
                 text = result['text']
                 if text != '':
-                    self.text_edit.append(text)
+                    [i.append(text) for i in self.text_edit]
 
     def stop(self):
         self.stop_event.set()
@@ -146,6 +156,7 @@ class MainWindow(QMainWindow):
         clear_button.clicked.connect(lambda: self.text_edit.clear())
         self.model = Model(resource_path("vosk-model-small-ru-0.22"))
         self.mic_chosen = {}
+        self.split_channels = False
         self.show()
 
     def process_file(self):
@@ -159,29 +170,31 @@ class MainWindow(QMainWindow):
         worker_thread.start()
 
     def process_live(self):
-        threads = {}
+        self.threads = {}
         if self.mic_chosen:
-            mow = TextMultiOutputWindow(self, self.mic_chosen)
+            mow = TextMultiOutputWindow(self, self.mic_chosen, self.split_channels)
             for micidx, micname in self.mic_chosen.items():
-                print(micidx,micname)
-                threads[micidx] = WorkerLive(self.model, mow.text_fields[micidx], self.process_button, self.rec_button, micidx)
-                self.stop_button.clicked.connect(threads[micidx].stop)
-                threads[micidx].start()
+                text_field = [mow.text_fields[str(micidx) + '_L'], mow.text_fields[str(micidx) + '_R']] if self.split_channels else [mow.text_fields[micidx]]
+                self.threads[micidx] = WorkerLive(self.model, text_field, self.process_button, self.rec_button, micidx, self.split_channels)
+                self.stop_button.clicked.connect(self.threads[micidx].stop)
+                self.threads[micidx].start()
         else:
-            th = WorkerLive(self.model, self.text_edit, self.process_button, self.rec_button, None)
-            self.stop_button.clicked.connect(th.stop)
-            th.start()
+            self.threads[0] = WorkerLive(self.model, [self.text_edit], self.process_button, self.rec_button, None, self.split_channels)
+            self.stop_button.clicked.connect(self.threads[0].stop)
+            self.threads[0].start()
 
     def choose_mics_window(self):
         mw = MicrophoneSelectionWindow(self)
 
     def closeEvent(self, event):
+        for th in list(self.threads.values()):
+            th.stop()
         QApplication.quit()
         event.accept()
 
 
 class TextMultiOutputWindow(QDialog):
-    def __init__(self,parent, field_names):
+    def __init__(self,parent, field_names, split_channels):
         super().__init__(parent=parent)
         self.setWindowTitle('Помикрофонный вывод')
         # создаем словарь для хранения текстовых полей
@@ -189,15 +202,25 @@ class TextMultiOutputWindow(QDialog):
         self.setWindowIcon(QIcon(resource_path('icon.png')))
         # создаем макет вертикального размещения
         layout = QVBoxLayout()
+        channels = ['_L','_R']
 
         # для каждого переданного имени поля создаем текстовое поле и добавляем его на макет
         for idx, name in field_names.items():
-            label = QLabel(name + ":")
-            text_field = QTextEdit()
-            text_field.setReadOnly(True)
-            self.text_fields[idx] = text_field
-            layout.addWidget(label)
-            layout.addWidget(text_field)
+            if split_channels:
+                for ch in channels:
+                    label = QLabel(name + ch + ":")
+                    text_field = QTextEdit()
+                    text_field.setReadOnly(True)
+                    self.text_fields[str(idx)+ch] = text_field
+                    layout.addWidget(label)
+                    layout.addWidget(text_field)
+            else:
+                label = QLabel(name + ":")
+                text_field = QTextEdit()
+                text_field.setReadOnly(True)
+                self.text_fields[idx] = text_field
+                layout.addWidget(label)
+                layout.addWidget(text_field)
 
         # устанавливаем макет для окна
         self.setLayout(layout)
