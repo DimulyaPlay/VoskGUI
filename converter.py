@@ -1,4 +1,4 @@
-from PyQt5.QtWidgets import QApplication, QPushButton, QTextEdit, QFileDialog, QMainWindow, QComboBox
+from PyQt5.QtWidgets import QApplication, QPushButton, QTextEdit, QFileDialog, QMainWindow, QComboBox, QProgressBar
 from PyQt5 import uic
 from PyQt5.QtGui import QIcon
 from vosk import Model, KaldiRecognizer
@@ -10,8 +10,9 @@ import subprocess
 import pyaudio
 import numpy as np
 from micselection import *
+
 #  pyinstaller --noconfirm --onefile --windowed --icon "C:/Users/dimas/VoskGUI/icon.png" --add-data "C:\Python38\Lib\site-packages\vosk;vosk" --add-data "C:/Users/dimas/VoskGUI/ffmpeg.exe;." --add-data "C:/Users/dimas/VoskGUI/ffprobe.exe;." --add-data "C:/Users/dimas/VoskGUI/icon.png;." --add-data "C:/Users/dimas/VoskGUI/vosk-model-small-ru-0.22;vosk-model-small-ru-0.22/"  "C:/Users/dimas/VoskGUI/converter.py"
-#  pyinstaller --noconfirm --onefile --windowed --icon "C:/Users/CourtUser/Desktop/release/VoskGUI/icon.png" --add-data "C:/Users/CourtUser/Desktop/release/VoskGUI/blue-document-music.png;." --add-data "C:/Users/CourtUser/Desktop/release/VoskGUI/cross.png;." --add-data "C:/Users/CourtUser/Desktop/release/VoskGUI/eraser.png;." --add-data "C:/Users/CourtUser/Desktop/release/VoskGUI/ffmpeg.exe;." --add-data "C:/Users/CourtUser/Desktop/release/VoskGUI/ffprobe.exe;." --add-data "C:/Users/CourtUser/Desktop/release/VoskGUI/icon.png;." --add-data "C:/Users/CourtUser/Desktop/release/VoskGUI/main_window.ui;." --add-data "C:/Users/CourtUser/Desktop/release/VoskGUI/microphone.png;." --add-data "C:/Users/CourtUser/Desktop/release/VoskGUI/microphone--pencil.png;." --add-data "C:/Users/CourtUser/Desktop/release/VoskGUI/vosk-model-small-ru-0.22;vosk-model-small-ru-0.22/" --add-data "C:/Python38/Lib/site-packages/vosk;vosk/"  "C:/Users/CourtUser/Desktop/release/VoskGUI/converter.py"
+#  pyinstaller --noconfirm --onefile --windowed --icon "C:/Users/CourtUser/Desktop/release/VoskGUI/icon.png" --add-data "C:/Users/CourtUser/Desktop/release/VoskGUI/qr-code.png;." --add-data "C:/Users/CourtUser/Desktop/release/VoskGUI/avatar.jpg;." --add-data "C:/Users/CourtUser/Desktop/release/VoskGUI/blue-document-music.png;." --add-data "C:/Users/CourtUser/Desktop/release/VoskGUI/cross.png;." --add-data "C:/Users/CourtUser/Desktop/release/VoskGUI/eraser.png;." --add-data "C:/Users/CourtUser/Desktop/release/VoskGUI/ffmpeg.exe;." --add-data "C:/Users/CourtUser/Desktop/release/VoskGUI/ffprobe.exe;." --add-data "C:/Users/CourtUser/Desktop/release/VoskGUI/icon.png;." --add-data "C:/Users/CourtUser/Desktop/release/VoskGUI/main_window.ui;." --add-data "C:/Users/CourtUser/Desktop/release/VoskGUI/microphone.png;." --add-data "C:/Users/CourtUser/Desktop/release/VoskGUI/microphone--pencil.png;." --add-data "C:/Users/CourtUser/Desktop/release/VoskGUI/vosk-model-small-ru-0.22;vosk-model-small-ru-0.22/" --add-data "C:/Python38/Lib/site-packages/vosk;vosk/"  "C:/Users/CourtUser/Desktop/release/VoskGUI/converter.py"
 
 
 def resource_path(relative_path):
@@ -26,7 +27,7 @@ def resource_path(relative_path):
 
 
 class WorkerFile(threading.Thread):
-    def __init__(self, filename, model, text_edit, sr, b1, b2):
+    def __init__(self, filename, model, text_edit, sr, b1, b2, progress_bar):
         super(WorkerFile, self).__init__()
         self.filename = filename
         self.model = model
@@ -35,46 +36,71 @@ class WorkerFile(threading.Thread):
         self.stop_event = threading.Event()
         self.b1 = b1
         self.b2 = b2
+        self.progress_bar = progress_bar
 
     def run(self):
         self.b1.setDisabled(True)
         self.b2.setDisabled(True)
-        new_filename = os.path.splitext(self.filename)[0] + "_new.wav"
-        subprocess.call(['ffmpeg', '-y', '-i', self.filename, new_filename], creationflags=subprocess.CREATE_NO_WINDOW)
-        self.filename = new_filename
-        wf = wave.open(self.filename, "rb")
-        rec = KaldiRecognizer(self.model, wf.getframerate())
+        self.new_filename = os.path.splitext(self.filename)[0] + "_new.wav"
+        ffmpeg_args = ['ffmpeg', '-y', '-i', self.filename]
+        if self.sr != 'Исходный Samplerate':
+            ffmpeg_args.extend(['-ar', str(self.sr)])
+        ffmpeg_args.append(self.new_filename)
+        subprocess.call(ffmpeg_args, creationflags=subprocess.CREATE_NO_WINDOW)
+        try:
+            wf = wave.open(self.new_filename, "rb")
+        except Exception as e:
+            self.text_edit.append(str(e))
+            return
+        total_frames = wf.getnframes()
+        try:
+            rec = KaldiRecognizer(self.model, wf.getframerate())
+        except Exception as e:
+            self.text_edit.append(str(e))
+            return
+        frames_ready = 0
+        progress = 0
         if self.sr == 'Исходный Samplerate':
             self.sr = wf.getframerate()
         else:
             self.sr = int(self.sr)
         while True:
             if self.stop_event.is_set():
-                self.text_edit.append('\n\nРаспознавание было остановлено пользователем.')
+                wf.close()
+                try:
+                    os.unlink(self.new_filename)
+                except Exception as e:
+                    self.text_edit.append(str(e))
+                    pass
+                self.text_edit.append('\nРаспознавание было остановлено пользователем.')
                 return
             data = wf.readframes(self.sr)
+            frames_ready += self.sr
+            progress = frames_ready/total_frames*100
+            self.progress_bar.setValue(int(progress))
             if len(data) == 0:
                 break
             if rec.AcceptWaveform(data):
                 result = json.loads(rec.Result())
                 text = result['text']
-                self.text_edit.append(text)
+                if text != '':
+                    self.text_edit.append(text)
+        wf.close()
         try:
-            os.unlink(self.filename)
-        except Exception:
+            os.unlink(self.new_filename)
+
+        except Exception as e:
+            self.text_edit.append(str(e))
             pass
         result = json.loads(rec.FinalResult())
         text = result['text']
         self.text_edit.append(text)
-        self.text_edit.append('\n\nРаспознавание завершено.')
+        self.text_edit.append('\nРаспознавание завершено.')
         self.b1.setDisabled(False)
         self.b2.setDisabled(False)
+        self.progress_bar.setValue(0)
 
     def stop(self):
-        try:
-            os.unlink(self.filename)
-        except Exception:
-            pass
         self.stop_event.set()
         self.b1.setDisabled(False)
         self.b2.setDisabled(False)
@@ -88,7 +114,10 @@ class WorkerLive(threading.Thread):
         self.stop_event = threading.Event()
         self.mic = mic_chosen
         self.split_channels = split_channels
-        channels = 2 if split_channels else 1
+        channels = 1
+        if split_channels:
+            channels = 2
+            self.rec2 = KaldiRecognizer(self.model, 16000)
         try:
             self.stream = pyaudio.PyAudio().open(
                 format=pyaudio.paInt16,
@@ -116,19 +145,17 @@ class WorkerLive(threading.Thread):
                 return
             data = self.stream.read(2000)
             if self.split_channels:
-                audio_data_np = np.frombuffer(data, dtype=np.float32)
-                audio_data_np = np.reshape(audio_data_np, (-1, 2))
-                # получаем данные из левого канала
-                left_channel = audio_data_np[:, 0]
-                right_channel = audio_data_np[:, 1]
+                data = np.frombuffer(data, dtype=np.int16)
+                left_channel = data[::2]
+                right_channel = data[1::2]
                 if self.rec.AcceptWaveform(left_channel.tobytes()):
                     result = json.loads(self.rec.Result())
                     text = result['text']
                     if text != '':
                         self.text_edit[0].append(text)
                 # получаем данные из правого канала
-                if self.rec.AcceptWaveform(right_channel.tobytes()):
-                    result = json.loads(self.rec.Result())
+                if self.rec2.AcceptWaveform(right_channel.tobytes()):
+                    result = json.loads(self.rec2.Result())
                     text = result['text']
                     if text != '':
                         self.text_edit[1].append(text)
@@ -148,14 +175,16 @@ class WorkerLive(threading.Thread):
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
+        promo = ['https://boosty.to/microrazrab', resource_path('qr-code.png')]
         uic.loadUi(resource_path('main_window.ui'), self)
-        self.setWindowTitle("Распознавание речи. Vosk RUS recognition GUI by Dmitry Sosnin")
+        self.setWindowTitle("МАТ - Многоканальный автоматический транскрибитор. Vosk RUS GUI by Dmitry Sosnin")
         self.setWindowIcon(QIcon(resource_path('icon.png')))
         self.text_edit = self.findChild(QTextEdit, 'textEdit')
         self.text_edit.textChanged.connect(
             lambda fname=os.getcwd() + '\\' + 'default_mic.txt': write_to_txt(fname, self.text_edit))
+        self.progress_bar = self.findChild(QProgressBar, 'progressBar')
         self.combo_box = self.findChild(QComboBox, 'comboBox')
-        self.combo_box.addItems(['4000', '8000', '16000', 'Исходный Samplerate'])
+        self.combo_box.addItems(['16000', 'Исходный Samplerate'])
         self.process_button = self.findChild(QPushButton, 'pushButton_fromFile')
         self.process_button.clicked.connect(self.process_file)
         self.rec_button = self.findChild(QPushButton, 'pushButton_fromMic')
@@ -165,6 +194,8 @@ class MainWindow(QMainWindow):
         self.choose_mics.clicked.connect(self.choose_mics_window)
         clear_button = self.findChild(QPushButton, 'pushButton_clear')
         clear_button.clicked.connect(lambda: self.text_edit.clear())
+        donate_button = self.findChild(QPushButton, 'pushButton')
+        donate_button.clicked.connect(lambda: [os.startfile(i) for i in promo])
         self.model = Model(resource_path("vosk-model-small-ru-0.22"))
         self.mic_chosen = {}
         self.threads = {}
@@ -173,11 +204,11 @@ class MainWindow(QMainWindow):
 
     def process_file(self):
         file_dialog = QFileDialog(self)
-        filename, _ = file_dialog.getOpenFileName(None, "Выберите аудиофайл", "", "Audio Files (*.wav *.mp3)")
+        filename, _ = file_dialog.getOpenFileName(None, "Выберите аудиофайл", "", )  # "Audio Files (*.wav *.mp3 *.wma *.m4a)"
         if not filename:
             return
         sr = self.combo_box.currentText()
-        self.worker_thread = WorkerFile(filename, self.model, self.text_edit, sr, self.process_button, self.rec_button)
+        self.worker_thread = WorkerFile(filename, self.model, self.text_edit, sr, self.process_button, self.rec_button, self.progress_bar)
         self.stop_button.clicked.connect(self.worker_thread.stop)
         self.worker_thread.start()
 
@@ -199,7 +230,7 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, event):
         try:
-            os.unlink(self.worker_thread.filename)
+            os.unlink(self.worker_thread.new_filename)
         except Exception:
             pass
         for th in list(self.threads.values()):
