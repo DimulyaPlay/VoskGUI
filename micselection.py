@@ -2,7 +2,8 @@ from PyQt5.QtWidgets import QApplication, QWidget, QLabel, QCheckBox, QPushButto
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QIcon
 import pyaudio
-import os, sys
+import os
+import sys
 
 
 def resource_path(relative_path):
@@ -72,7 +73,3 @@ class MicrophoneSelectionWindow(QDialog):
         self.parent.split_channels = self.split_channels.isChecked()
         # Закрытие окна и возврат списка индексов микрофонов
         self.close()
-
-
-
-

@@ -53,6 +53,7 @@ class WorkerFile(threading.Thread):
             self.text_edit.append(str(e))
             return
         total_frames = wf.getnframes()
+        self.sr = wf.getframerate()
         try:
             rec = KaldiRecognizer(self.model, wf.getframerate())
         except Exception as e:
@@ -60,10 +61,6 @@ class WorkerFile(threading.Thread):
             return
         frames_ready = 0
         progress = 0
-        if self.sr == 'Исходный Samplerate':
-            self.sr = wf.getframerate()
-        else:
-            self.sr = int(self.sr)
         while True:
             if self.stop_event.is_set():
                 wf.close()
@@ -80,15 +77,18 @@ class WorkerFile(threading.Thread):
             self.progress_bar.setValue(int(progress))
             if len(data) == 0:
                 break
-            if rec.AcceptWaveform(data):
-                result = json.loads(rec.Result())
-                text = result['text']
-                if text != '':
-                    self.text_edit.append(text)
+            try:
+                if rec.AcceptWaveform(data):
+                    result = json.loads(rec.Result())
+                    text = result['text']
+                    if text != '':
+                        self.text_edit.append(text)
+            except:
+                self.text_edit.append('Не удается передать данные в модель')
+                break
         wf.close()
         try:
             os.unlink(self.new_filename)
-
         except Exception as e:
             self.text_edit.append(str(e))
             pass
@@ -182,6 +182,7 @@ class MainWindow(QMainWindow):
         self.text_edit = self.findChild(QTextEdit, 'textEdit')
         self.text_edit.textChanged.connect(
             lambda fname=os.getcwd() + '\\' + 'default_mic.txt': write_to_txt(fname, self.text_edit))
+        self.text_edit.dropEvent = self.process_file_from_drop
         self.progress_bar = self.findChild(QProgressBar, 'progressBar')
         self.combo_box = self.findChild(QComboBox, 'comboBox')
         self.combo_box.addItems(['16000', 'Исходный Samplerate'])
@@ -202,11 +203,19 @@ class MainWindow(QMainWindow):
         self.split_channels = False
         self.show()
 
-    def process_file(self):
+    def process_file_from_button(self):
         file_dialog = QFileDialog(self)
-        filename, _ = file_dialog.getOpenFileName(None, "Выберите аудиофайл", "", )  # "Audio Files (*.wav *.mp3 *.wma *.m4a)"
-        if not filename:
-            return
+        filename, _ = file_dialog.getOpenFileName(None, "Выберите аудиофайл",
+                                                  "", )  # "Audio Files (*.wav *.mp3 *.wma *.m4a)"
+        if filename:
+            self.process_file(filename)
+
+    def process_file_from_drop(self, event):
+        files = [u.toLocalFile() for u in event.mimeData().urls()]
+        print(files)
+        self.process_file(files[0])
+
+    def process_file(self, filename):
         sr = self.combo_box.currentText()
         self.worker_thread = WorkerFile(filename, self.model, self.text_edit, sr, self.process_button, self.rec_button, self.progress_bar)
         self.stop_button.clicked.connect(self.worker_thread.stop)
