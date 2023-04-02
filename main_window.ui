@@ -142,7 +142,7 @@
          </sizepolicy>
         </property>
         <property name="text">
-         <string>Поддержать</string>
+         <string>О программе</string>
         </property>
         <property name="icon">
          <iconset>

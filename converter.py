@@ -11,8 +11,8 @@ import pyaudio
 import numpy as np
 from micselection import *
 
-#  pyinstaller --noconfirm --onefile --windowed --icon "C:/Users/dimas/VoskGUI/icon.png" --add-data "C:\Python38\Lib\site-packages\vosk;vosk" --add-data "C:/Users/dimas/VoskGUI/ffmpeg.exe;." --add-data "C:/Users/dimas/VoskGUI/ffprobe.exe;." --add-data "C:/Users/dimas/VoskGUI/icon.png;." --add-data "C:/Users/dimas/VoskGUI/vosk-model-small-ru-0.22;vosk-model-small-ru-0.22/"  "C:/Users/dimas/VoskGUI/converter.py"
-#  pyinstaller --noconfirm --onefile --windowed --icon "C:/Users/CourtUser/Desktop/release/VoskGUI/icon.png" --add-data "C:/Users/CourtUser/Desktop/release/VoskGUI/qr-code.png;." --add-data "C:/Users/CourtUser/Desktop/release/VoskGUI/avatar.jpg;." --add-data "C:/Users/CourtUser/Desktop/release/VoskGUI/blue-document-music.png;." --add-data "C:/Users/CourtUser/Desktop/release/VoskGUI/cross.png;." --add-data "C:/Users/CourtUser/Desktop/release/VoskGUI/eraser.png;." --add-data "C:/Users/CourtUser/Desktop/release/VoskGUI/ffmpeg.exe;." --add-data "C:/Users/CourtUser/Desktop/release/VoskGUI/ffprobe.exe;." --add-data "C:/Users/CourtUser/Desktop/release/VoskGUI/icon.png;." --add-data "C:/Users/CourtUser/Desktop/release/VoskGUI/main_window.ui;." --add-data "C:/Users/CourtUser/Desktop/release/VoskGUI/microphone.png;." --add-data "C:/Users/CourtUser/Desktop/release/VoskGUI/microphone--pencil.png;." --add-data "C:/Users/CourtUser/Desktop/release/VoskGUI/vosk-model-small-ru-0.22;vosk-model-small-ru-0.22/" --add-data "C:/Python38/Lib/site-packages/vosk;vosk/"  "C:/Users/CourtUser/Desktop/release/VoskGUI/converter.py"
+#  pyinstaller --noconfirm --onefile --windowed --icon "C:/Users/dimas/VoskGUI/icon.png" --add-data "C:/Users/dimas/VoskGUI/about_ui.ui;." --add-data "C:/Users/dimas/VoskGUI/main_window.ui;." --add-data "C:/Users/dimas/VoskGUI/avatar.jpg;." --add-data "C:/Users/dimas/VoskGUI/blue-document-music.png;." --add-data "C:/Users/dimas/VoskGUI/cross.png;." --add-data "C:/Users/dimas/VoskGUI/eraser.png;." --add-data "C:/Users/dimas/VoskGUI/microphone.png;." --add-data "C:/Users/dimas/VoskGUI/microphone--pencil.png;." --add-data "C:/Users/dimas/VoskGUI/icon.png;." --add-data "C:/Users/dimas/VoskGUI/ffprobe.exe;." --add-data "C:/Users/dimas/VoskGUI/ffmpeg.exe;." --add-data "C:/Users/dimas/VoskGUI/vosk-model-small-ru-0.22;vosk-model-small-ru-0.22/" --add-data "C:/Python38/Lib/site-packages/vosk;vosk/"  "C:/Users/dimas/VoskGUI/converter.py"
+#  pyinstaller --noconfirm --onefile --windowed --icon "C:/Users/CourtUser/Desktop/release/VoskGUI/icon.png" --add-data "C:/Users/CourtUser/Desktop/release/VoskGUI/avatar.jpg;." --add-data "C:/Users/CourtUser/Desktop/release/VoskGUI/blue-document-music.png;." --add-data "C:/Users/CourtUser/Desktop/release/VoskGUI/cross.png;." --add-data "C:/Users/CourtUser/Desktop/release/VoskGUI/eraser.png;." --add-data "C:/Users/CourtUser/Desktop/release/VoskGUI/ffmpeg.exe;." --add-data "C:/Users/CourtUser/Desktop/release/VoskGUI/ffprobe.exe;." --add-data "C:/Users/CourtUser/Desktop/release/VoskGUI/icon.png;." --add-data "C:/Users/CourtUser/Desktop/release/VoskGUI/main_window.ui;." --add-data "C:/Users/CourtUser/Desktop/release/VoskGUI/microphone.png;." --add-data "C:/Users/CourtUser/Desktop/release/VoskGUI/microphone--pencil.png;." --add-data "C:/Users/CourtUser/Desktop/release/VoskGUI/vosk-model-small-ru-0.22;vosk-model-small-ru-0.22/" --add-data "C:/Python38/Lib/site-packages/vosk;vosk/"  "C:/Users/CourtUser/Desktop/release/VoskGUI/converter.py"
 
 
 def resource_path(relative_path):
@@ -175,7 +175,6 @@ class WorkerLive(threading.Thread):
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        promo = ['https://boosty.to/microrazrab', resource_path('qr-code.png')]
         uic.loadUi(resource_path('main_window.ui'), self)
         self.setWindowTitle("МАТ - Многоканальный автоматический транскрибитор. Vosk RUS GUI by Dmitry Sosnin")
         self.setWindowIcon(QIcon(resource_path('icon.png')))
@@ -196,7 +195,7 @@ class MainWindow(QMainWindow):
         clear_button = self.findChild(QPushButton, 'pushButton_clear')
         clear_button.clicked.connect(lambda: self.text_edit.clear())
         donate_button = self.findChild(QPushButton, 'pushButton')
-        donate_button.clicked.connect(lambda: [os.startfile(i) for i in promo])
+        donate_button.clicked.connect(lambda: AboutWindow(self))
         self.model = Model(resource_path("vosk-model-small-ru-0.22"))
         self.mic_chosen = {}
         self.threads = {}
@@ -287,6 +286,13 @@ class TextMultiOutputWindow(QDialog):
 
         # устанавливаем макет для окна
         self.setLayout(layout)
+        self.show()
+
+
+class AboutWindow(QDialog):
+    def __init__(self, parent):
+        super().__init__(parent=parent)
+        uic.loadUi(resource_path('about_ui.ui'), self)
         self.show()
 
 
